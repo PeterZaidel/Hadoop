@@ -9,16 +9,21 @@ import java.util.List;
 
 public class LinkNode implements Writable {
 
-    public static String DELIMETER = "|";
+    public static String DELIMETER = "@#@";
 
-    private String link = "";
-    private double pr = 0.0;
-    private double a = 1.0;
-    private double h = 1.0;
+    public String link = "";
+    public double pr = 0.0;
+    public double a = 1.0;
+    public double h = 1.0;
 
 
     public LinkNode()
     {}
+
+    public LinkNode(String link)
+    {
+        this.link = link;
+    }
 
     public LinkNode(String link, double pr, double a, double h)
     {

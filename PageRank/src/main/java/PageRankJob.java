@@ -45,57 +45,36 @@ public class PageRankJob extends Configured implements Tool {
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            String header_url ="";
             String input_text = value.toString();
 
             int split_index = input_text.indexOf("\t");
-            header_url = input_text.substring(0, split_index);
+            String header_url = input_text.substring(0, split_index);
             input_text = input_text.substring(split_index+1);
 
-            NodeWritable node = new NodeWritable();
-            node.parseString(input_text);
+            Record rec = new Record();
+            rec.parseString(input_text);
 
-            context.write(new Text(node.getNodeUrl()), new Text(node.toString()));
+            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
 
-            if(node.getLinksSize() == 0)
+            if(rec.out_nodes.size() == 0)
             {
                 return;
             }
 
-            double link_rank = node.getRank()/node.getLinksSize();
-            for(String link : node.getLinks())
+            double link_rank = rec.head.getPR()/rec.out_nodes.size();
+            for(LinkNode n : rec.out_nodes)
             {
-                if (link.length() == 0)
+                if (n.getLink().length() == 0)
                 {
                     continue;
                 }
+                n.pr  = link_rank;
 
-                NodeWritable cur_node = new NodeWritable(link, link_rank);
-                context.write(new Text(link), new Text(cur_node.toString()));
+                Record node_rec = new Record();
+                node_rec.head = rec.head;
+
+                context.write(new Text(n.getLink()), new Text(node_rec.toString()));
             }
-
-
-
-
-//
-//            String[] args = value.toString().trim().split("\t");
-//            String node_url = args[0];
-//            double node_rank = Double.parseDouble(args[1]);
-//
-//            List<String> node_links = new ArrayList<>(Arrays.asList(args).subList(3, args.length));
-//
-//            context.write(new Text(node_url), new NodeWritable(node_rank, node_links));
-//
-//            if(node_links.size() == 0)
-//            {
-//                return;
-//            }
-//
-//            double link_rank = node_rank / node_links.size();
-//            for(String link : node_links)
-//            {
-//                context.write(new Text(link), new NodeWritable(link_rank));
-//            }
         }
     }
 
@@ -103,42 +82,36 @@ public class PageRankJob extends Configured implements Tool {
     {
         @Override
         protected void reduce(Text node_url, Iterable<Text> nodes_text, Context context) throws IOException, InterruptedException {
+
+            Record rec = new Record();
             double rank = 0;
-            List<String> node_links = new ArrayList<>();
 
-            List<String> input_strs = new ArrayList<>();
+            for (Text text_data : nodes_text) {
+                Record node_rec = new Record();
+                node_rec.parseString(text_data.toString());
 
-            for (Text node_str : nodes_text) {
+                if (node_rec.out_nodes.size() > 0) {
 
-                input_strs.add(node_str.toString());
-
-                NodeWritable node = new NodeWritable();
-                node.parseString(node_str.toString());
-                if (node.getLinksSize() > 0) {
-                    node_links.addAll(node.getLinks());
+                    rec = node_rec;
+                    //node_links.addAll(node.getLinks());
                 } else {
-                    rank += node.getRank();
+                    rank += node_rec.head.pr;
+                    //rank += node.getRank();
                 }
             }
 
             rank =  (alpha) / N + (1.0 - alpha) * rank;
-            NodeWritable node = new NodeWritable(node_url.toString(),rank, node_links);
-            context.write(new Text(node_url), new Text(node.toString()));
+            rec.head.pr = rank;
+            context.write(new Text(node_url), new Text(rec.toString()));
         }
     }
 
     @Override
     public int run(String[] args) throws Exception
     {
-        N = Integer.parseInt(System.getProperty("N"));
-        alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
-        Iterations = Integer.parseInt(System.getProperty("iter", "5"));
-
-//        Job job =  GetJobConf(getConf(), args[0], args[1], 1);
-////        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
-////            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
-////        }
-//        return job.waitForCompletion(true) ? 0 : 1;
+//        N = Integer.parseInt(System.getProperty("N", "5"));
+//        alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
+//        Iterations = Integer.parseInt(System.getProperty("iter", "2"));
 
         int iterations = Iterations;//Integer.parseInt(args[0]);
         String input_file = args[0];
@@ -184,15 +157,6 @@ public class PageRankJob extends Configured implements Tool {
         FileSystem fs = new Path("/").getFileSystem(conf);
 
         TextInputFormat.addInputPath(job, new Path(input));
-
-//        RemoteIterator<LocatedFileStatus> fileListItr = fs.listFiles(new Path(input), false);
-//
-//        while (fileListItr != null && fileListItr.hasNext()) {
-//            LocatedFileStatus file = fileListItr.next();
-//            if (file.toString().contains("part")) {
-//                TextInputFormat.addInputPath(job, file.getPath());
-//            }
-//        }
 
         job.setMapperClass(PageRankMapper.class);
         job.setReducerClass(PageRankReducer.class);

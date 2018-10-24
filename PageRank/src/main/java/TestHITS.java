@@ -1,7 +1,5 @@
-import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader;
 import org.apache.hadoop.util.ToolRunner;
 
-import javax.xml.soap.Node;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
@@ -10,8 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class TestPageRank
-{
+public class TestHITS {
     public static void createTestLinkGraphFile(String foldername) throws FileNotFoundException, UnsupportedEncodingException {
         PrintWriter writer = new PrintWriter(foldername + "part-r-00000", "UTF-8");
 
@@ -20,7 +17,6 @@ public class TestPageRank
         Record nodeC = new Record("C",  Arrays.asList("A"), new ArrayList<String>());
         Record nodeD = new Record("D",  Arrays.asList("A"), Arrays.asList("A"));
         Record nodeE = new Record("E",  Arrays.asList("A"), Arrays.asList("B"));
-
 
         List<Record> nodes = Arrays.asList(nodeA, nodeB, nodeC,
                 nodeD, nodeE);
@@ -31,28 +27,6 @@ public class TestPageRank
         }
 
         writer.close();
-    }
-
-    static void TestNodeWriter()
-    {
-        NodeWritable node1 = new NodeWritable("http://lenta.ru/news/2006/05/04/koshtinya/",
-                10.00, Arrays.asList("http://www.facebook.com/2008/fbml",
-                                          "http://lenta.ru/news/2014/10/27/internetpackage/"));
-
-        String str1 = node1.toString();
-
-        NodeWritable node2 = new NodeWritable();
-        node2.parseString(str1);
-
-        boolean res = true;
-
-        assert (node1.getNodeUrl().equals(node2.getNodeUrl()));
-        assert (node1.getRank() == node2.getRank());
-        assert (node1.getLinksSize() == node2.getLinksSize());
-        for(int i = 0; i < node1.getLinksSize(); i++ )
-        {
-            assert node1.getLinks().get(i).equals(node2.getLinks().get(i));
-        }
     }
 
     static boolean deleteDirectory(File directoryToBeDeleted) {
@@ -72,14 +46,13 @@ public class TestPageRank
         deleteDirectory(new File(args[1]));
 
 
-
         createTestLinkGraphFile(args[0]);
 
-        PageRankJob.N = 5;
-        PageRankJob.Iterations = 2;
-        PageRankJob.alpha = 0.1;
+        HITSJob.N = 5;
+        HITSJob.Iterations = 3;
+
         args[0] = args[0]+"part-r-*";
-        int exitCode = ToolRunner.run(new PageRankJob(), args);
+        int exitCode = ToolRunner.run(new HITSJob(), args);
         System.exit(exitCode);
 
     }

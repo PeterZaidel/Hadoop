@@ -18,6 +18,7 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import javax.print.DocFlavor;
+import javax.ws.rs.HEAD;
 import javax.xml.soap.Node;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -37,7 +38,11 @@ public class HITSJob extends Configured implements Tool {
 
     public static double alpha = 0.1;
     public static long N = 100000;
-    public static int Iterations = 2;
+    public static int Iterations = 3;
+
+    private static String OUT_HEADER = "<OUT>";
+    private static String IN_HEADER = "<IN>";
+    private static String HEAD_HEADER = "<HEAD>";
 
 
 
@@ -45,57 +50,53 @@ public class HITSJob extends Configured implements Tool {
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            String header_url ="";
             String input_text = value.toString();
 
             int split_index = input_text.indexOf("\t");
-            header_url = input_text.substring(0, split_index);
+            String header_url = input_text.substring(0, split_index);
             input_text = input_text.substring(split_index+1);
 
-            NodeWritable node = new NodeWritable();
-            node.parseString(input_text);
+            Record rec = new Record();
+            rec.parseString(input_text);
 
-            context.write(new Text(node.getNodeUrl()), new Text(node.toString()));
-
-            if(node.getLinksSize() == 0)
+            rec.head.a = 0.0;
+            for(LinkNode n : rec.out_nodes)
             {
-                return;
+                rec.head.a += n.h;
             }
 
-            double link_rank = node.getRank()/node.getLinksSize();
-            for(String link : node.getLinks())
+            rec.head.h = 0.0;
+            for(LinkNode n : rec.out_nodes)
             {
-                if (link.length() == 0)
-                {
-                    continue;
-                }
+                rec.head.h += n.a;
+            }
 
-                NodeWritable cur_node = new NodeWritable(link, link_rank);
-                context.write(new Text(link), new Text(cur_node.toString()));
+            context.write(new Text(rec.head.getLink()), new Text(HEAD_HEADER + rec.head.toString()));
+
+            for(LinkNode n: rec.out_nodes)
+            {
+                context.write(new Text(n.getLink()), new Text(OUT_HEADER + rec.head.toString()));
+            }
+
+            for(LinkNode n: rec.in_nodes)
+            {
+                context.write(new Text(n.getLink()), new Text(IN_HEADER + rec.head.toString()));
             }
 
 
+//            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
 
-
-
-//
-//            String[] args = value.toString().trim().split("\t");
-//            String node_url = args[0];
-//            double node_rank = Double.parseDouble(args[1]);
-//
-//            List<String> node_links = new ArrayList<>(Arrays.asList(args).subList(3, args.length));
-//
-//            context.write(new Text(node_url), new NodeWritable(node_rank, node_links));
-//
-//            if(node_links.size() == 0)
+//            if(rec.out_nodes.size() == 0)
 //            {
 //                return;
 //            }
 //
-//            double link_rank = node_rank / node_links.size();
-//            for(String link : node_links)
+//            for(LinkNode n : rec.out_nodes)
 //            {
-//                context.write(new Text(link), new NodeWritable(link_rank));
+//                Record node_rec = new Record(rec.head);
+////                node_rec.head = rec.head;
+//
+//                context.write(new Text(n.getLink()), new Text(node_rec.toString()));
 //            }
         }
     }
@@ -103,51 +104,58 @@ public class HITSJob extends Configured implements Tool {
     public static class HITSReducer extends Reducer<Text,Text, Text, Text>
     {
         @Override
-        protected void reduce(Text node_url, Iterable<Text> nodes_text, Context context) throws IOException, InterruptedException {
-            double rank = 0;
-            List<String> node_links = new ArrayList<>();
+        protected void reduce(Text head_node_data, Iterable<Text> nodes_data, Context context) throws IOException, InterruptedException {
+            Record rec = new Record();
 
-            List<String> input_strs = new ArrayList<>();
+            for(Text t : nodes_data)
+            {
+                String data = t.toString();
+                if(data.contains(IN_HEADER)) {
+                    data = data.replace(IN_HEADER, "");
 
-            for (Text node_str : nodes_text) {
+                }
 
-                input_strs.add(node_str.toString());
+                if(data.contains(OUT_HEADER)) {
+                    data = data.replace(OUT_HEADER, "");
+                    LinkNode n = new LinkNode();
+                    n.parseString(data);
 
-                NodeWritable node = new NodeWritable();
-                node.parseString(node_str.toString());
-                if (node.getLinksSize() > 0) {
-                    node_links.addAll(node.getLinks());
-                } else {
-                    rank += node.getRank();
+                    rec.out_nodes.add(n);
+                }
+
+                if(data.contains(HEAD_HEADER)) {
+                    data = data.replace(HEAD_HEADER, "");
+                    rec.head.parseString(data);
                 }
             }
 
-            rank =  (alpha) / N + (1.0 - alpha) * rank;
-            NodeWritable node = new NodeWritable(node_url.toString(),rank, node_links);
-            context.write(new Text(node_url), new Text(node.toString()));
+            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
         }
     }
 
     @Override
     public int run(String[] args) throws Exception
     {
-        N = Integer.parseInt(System.getProperty("N"));
-        alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
-        Iterations = Integer.parseInt(System.getProperty("iter", "5"));
-
-//        Job job =  GetJobConf(getConf(), args[0], args[1], 1);
-////        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
-////            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
-////        }
-//        return job.waitForCompletion(true) ? 0 : 1;
+/*
+N = Integer.parseInt(System.getProperty("N"));
+alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
+Iterations = Integer.parseInt(System.getProperty("iter", "5"));
+Job job =  GetJobConf(getConf(), args[0], args[1], 1);
+//        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
+//            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
+//        }
+return job.waitForCompletion(true) ? 0 : 1;
+*/
 
         int iterations = Iterations;//Integer.parseInt(args[0]);
+        System.out.println("Iters: " + Integer.toString(iterations));
         String input_file = args[0];
         String output = args[1];
         Configuration conf = getConf();
 
-        String inputFormat  = "%s/it%02d/part-r-*";
         String outputFormat = "%s/it%02d/";
+        String inputFormat  = "%s/it%02d/part-r-*";
+
 
         String inputStep = "", outputStep = "";
         Job[] steps = new Job[iterations];
@@ -161,6 +169,9 @@ public class HITSJob extends Configured implements Tool {
         }
 
         for (int i = 1; i < iterations; i++) {
+
+            System.out.println("iter: " + Integer.toString(i));
+
             inputStep  = String.format(inputFormat,  output, i);
             outputStep = String.format(outputFormat, output, i + 1);
             steps[i] = GetJobConf(conf, inputStep, outputStep, i + 1);
@@ -176,8 +187,8 @@ public class HITSJob extends Configured implements Tool {
 
     private static Job GetJobConf(Configuration conf, String input, String output, int currentIteration) throws IOException {
         Job job = Job.getInstance(conf);
-        job.setJarByClass(HITSJob.class);
-        job.setJobName(HITSJob.class.getCanonicalName());
+        job.setJarByClass(PageRankJob.class);
+        job.setJobName(PageRankJob.class.getCanonicalName());
 
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
@@ -185,15 +196,6 @@ public class HITSJob extends Configured implements Tool {
         FileSystem fs = new Path("/").getFileSystem(conf);
 
         TextInputFormat.addInputPath(job, new Path(input));
-
-//        RemoteIterator<LocatedFileStatus> fileListItr = fs.listFiles(new Path(input), false);
-//
-//        while (fileListItr != null && fileListItr.hasNext()) {
-//            LocatedFileStatus file = fileListItr.next();
-//            if (file.toString().contains("part")) {
-//                TextInputFormat.addInputPath(job, file.getPath());
-//            }
-//        }
 
         job.setMapperClass(HITSMapper.class);
         job.setReducerClass(HITSReducer.class);
