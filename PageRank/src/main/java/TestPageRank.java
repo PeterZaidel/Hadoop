@@ -1,7 +1,6 @@
-import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader;
+
 import org.apache.hadoop.util.ToolRunner;
 
-import javax.xml.soap.Node;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;

@@ -37,7 +37,11 @@ public class PageRankJob extends Configured implements Tool {
 
     public static double alpha = 0.1;
     public static long N = 100000;
-    public static int Iterations = 2;
+    public static int Iterations = 3;
+
+    private static final String HEADER_NODE = "<NODE>";
+    private static final String HEADER_REC = "<REC>";
+
 
 
 
@@ -54,26 +58,30 @@ public class PageRankJob extends Configured implements Tool {
             Record rec = new Record();
             rec.parseString(input_text);
 
-            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
+            context.write(new Text(rec.head.getLink()), new Text(HEADER_REC + rec.toString()));
 
             if(rec.out_nodes.size() == 0)
             {
                 return;
             }
 
-            double link_rank = rec.head.getPR()/rec.out_nodes.size();
+            double to_pr = rec.head.getPR()/rec.out_nodes.size();
             for(LinkNode n : rec.out_nodes)
             {
                 if (n.getLink().length() == 0)
                 {
                     continue;
                 }
-                n.pr  = link_rank;
 
-                Record node_rec = new Record();
-                node_rec.head = rec.head;
+                LinkNode to = new LinkNode();
+                to.link = rec.head.link;
+                to.pr = to_pr;
+//                n.pr  = to_pr;
+//
+//                Record node_rec = new Record();
+//                node_rec.head = rec.head;
 
-                context.write(new Text(n.getLink()), new Text(node_rec.toString()));
+                context.write(new Text(n.getLink()), new Text(HEADER_NODE + to.toString()));
             }
         }
     }
@@ -86,22 +94,27 @@ public class PageRankJob extends Configured implements Tool {
             Record rec = new Record();
             double rank = 0;
 
-            for (Text text_data : nodes_text) {
-                Record node_rec = new Record();
-                node_rec.parseString(text_data.toString());
+            for (Text tt : nodes_text) {
+                String text_data = tt.toString();
+                if(text_data.contains(HEADER_NODE))
+                {
+                    text_data = text_data.replace(HEADER_NODE, "");
+                    LinkNode n = new LinkNode();
+                    n.parseString(text_data);
+                    rank += n.pr;
+                    continue;
+                }
 
-                if (node_rec.out_nodes.size() > 0) {
-
-                    rec = node_rec;
-                    //node_links.addAll(node.getLinks());
-                } else {
-                    rank += node_rec.head.pr;
-                    //rank += node.getRank();
+                if(text_data.contains(HEADER_REC))
+                {
+                    text_data = text_data.replace(HEADER_REC, "");
+                    rec.parseString(text_data);
                 }
             }
 
             rank =  (alpha) / N + (1.0 - alpha) * rank;
             rec.head.pr = rank;
+
             context.write(new Text(node_url), new Text(rec.toString()));
         }
     }
@@ -154,7 +167,7 @@ public class PageRankJob extends Configured implements Tool {
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
 
-        FileSystem fs = new Path("/").getFileSystem(conf);
+//        FileSystem fs = new Path("/").getFileSystem(conf);
 
         TextInputFormat.addInputPath(job, new Path(input));
 

@@ -13,6 +13,8 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,6 +23,11 @@ import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
 public class LinkGraphJob extends Configured implements Tool {
+
+    public static final String LINK_GRAPH_GROUP = "LINK_GRAPH_GROUP";
+    public static String ALL_LINKS_COUNTER = "ALL_LINKS_COUNTER";
+    public static String END_LINKS_COUNTER = "END_LINKS_COUNTER";
+
 
     protected static Path index_urls_path = new Path("/");
 
@@ -33,18 +40,22 @@ public class LinkGraphJob extends Configured implements Tool {
         {
             try {
                 FileSystem fs = FileSystem.get(new Configuration());
-                BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(index_urls_path)));
-                String line;
-                line=br.readLine();
-                while (line != null){
-                    String[] args = line.split("\t");
-                    int id = Integer.parseInt(args[0]);
-                    String url = args[1];
-
-                    urls_map.put(url, id);
-                    inv_urls_map.put(id, url);
-
+                FileStatus[] statuses = fs.globStatus(index_urls_path);
+                for (FileStatus status : statuses)
+                {
+                    BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(status.getPath())) );
+                    String line;
                     line=br.readLine();
+                    while (line != null){
+                        String[] args = line.split("\t");
+                        int id = Integer.parseInt(args[0]);
+                        String url = args[1];
+
+                        urls_map.put(url, id);
+                        inv_urls_map.put(id, url);
+
+                        line=br.readLine();
+                    }
                 }
             }
             catch (Exception e)
@@ -99,7 +110,18 @@ public class LinkGraphJob extends Configured implements Tool {
 
         }
 
-        private List<String> find_urls(String text){
+        public static String getDomainName(String url) {
+            try {
+                URI uri = new URI(url);
+                String domain = uri.getHost();
+                return domain.startsWith("www.") ? domain.substring(4) : domain;
+            }catch (Exception e)
+            {
+                return "";
+            }
+        }
+
+        private List<String> find_urls(String text) {
             List<String> res = new ArrayList<>();
             Matcher matcher = urlPattern.matcher(text);
             while (matcher.find()) {
@@ -109,7 +131,7 @@ public class LinkGraphJob extends Configured implements Tool {
 
                 String url_text = text.substring(matchStart, matchEnd);
 
-                if(urls_map.size() == 0 || urls_map.containsKey(url_text)) {
+                if(urls_map.containsKey(url_text)) {
                     res.add(urls_map.get(url_text).toString());
                 }
             }
@@ -139,21 +161,21 @@ public class LinkGraphJob extends Configured implements Tool {
                 html_text = decompress(raw_text);
                 List<String> out_links = find_urls(html_text);
 
-                if(out_links.size() == 0)
-                {
-                    context.getCounter("PageRank", "EndNodesCounter").increment(1);
-                    return;
-                }
+//                if(out_links.size() == 0)
+//                {
+//                    context.getCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).increment(1);
+//                    return;
+//                }
 
 
-                String out_str = "<OUT>";
+                StringBuilder out_str = new StringBuilder("<OUT>");
                 for(String url: out_links)
                 {
                     if (url.length() > 0)
-                        out_str += url + "\t";
+                        out_str.append(url).append("\t");
                 }
 
-                context.write(new LongWritable(doc_id), new Text(out_str));
+                context.write(new LongWritable(doc_id), new Text(out_str.toString()));
 
                 for(String url: out_links)
                 {
@@ -206,7 +228,8 @@ public class LinkGraphJob extends Configured implements Tool {
             Record rec = new Record(header_link, out_links, in_links);
             if(rec.out_nodes.size() == 0)
             {
-                context.getCounter("PageRank", "EndNodesCounter").increment(1);
+                System.out.println("end_link_id: " + url_idx);
+                context.getCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).increment(1);
             }
 
 //            Record rec = new Record();
@@ -283,7 +306,13 @@ public class LinkGraphJob extends Configured implements Tool {
 //        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
 //            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
 //        }
-        return job.waitForCompletion(true) ? 0 : 1;
+        int res = job.waitForCompletion(true) ? 0 : 1;
+
+
+        System.out.println(END_LINKS_COUNTER + ": " + job.getCounters().findCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).getValue());
+
+
+        return res;
     }
 
     private static Job GetJobConf(Configuration conf, final String input, String output) throws IOException {
@@ -293,18 +322,18 @@ public class LinkGraphJob extends Configured implements Tool {
 
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
-//        TextInputFormat.addInputPath(job, new Path(input));
+        TextInputFormat.addInputPath(job, new Path(input));
 
-        FileSystem fs = new Path("/").getFileSystem(conf);
-
-        RemoteIterator<LocatedFileStatus> fileListItr = fs.listFiles(new Path(input), false);
-
-        while (fileListItr != null && fileListItr.hasNext()) {
-            LocatedFileStatus file = fileListItr.next();
-            if (file.toString().contains("txt")) {
-                TextInputFormat.addInputPath(job, file.getPath());
-            }
-        }
+//        FileSystem fs = new Path("/").getFileSystem(conf);
+//
+//        RemoteIterator<LocatedFileStatus> fileListItr = fs.listFiles(new Path(input), false);
+//
+//        while (fileListItr != null && fileListItr.hasNext()) {
+//            LocatedFileStatus file = fileListItr.next();
+//            if (file.toString().contains("txt")) {
+//                TextInputFormat.addInputPath(job, file.getPath());
+//            }
+//        }
 
         job.setMapperClass(LinkGraphMapper.class);
 //        job.setCombinerClass(LinkGraphReducer.class);

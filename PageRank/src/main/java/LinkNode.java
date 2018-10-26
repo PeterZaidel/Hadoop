@@ -9,7 +9,7 @@ import java.util.List;
 
 public class LinkNode implements Writable {
 
-    public static String DELIMETER = "@#@";
+    public static String DELIMETER = ":";
 
     public String link = "";
     public double pr = 0.0;

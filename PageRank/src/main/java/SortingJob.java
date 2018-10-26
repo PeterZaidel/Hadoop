@@ -98,7 +98,6 @@ public class SortingJob extends Configured implements Tool {
     {
         @Override
         protected void reduce(DoubleWritable val, Iterable<Text> nodes_data, Context context) throws IOException, InterruptedException {
-            Record rec = new Record();
 
             for(Text t : nodes_data)
             {
@@ -113,15 +112,28 @@ public class SortingJob extends Configured implements Tool {
     @Override
     public int run(String[] args) throws Exception
     {
-        Job job = GetJobConf(getConf(), args[0], args[1]);
-        return job.waitForCompletion(true) ? 0 : 1;
+
+        String res_path = args[2];
+        SORT_VAL = SortingVal.PR;
+        Job job = GetJobConf(getConf(), args[0], res_path + "pr/");
+        int res = job.waitForCompletion(true) ? 0 : 1;
+
+        SORT_VAL = SortingVal.HITS_A;
+        job = GetJobConf(getConf(), args[1], res_path + "hits_a/");
+        res = job.waitForCompletion(true) ? 0 : 1;
+
+        SORT_VAL = SortingVal.HITS_H;
+        job = GetJobConf(getConf(), args[1], res_path + "hits_h/");
+        res = job.waitForCompletion(true) ? 0 : 1;
+
+        return res;
     }
 
 
     private static Job GetJobConf(Configuration conf, String input, String output) throws IOException {
         Job job = Job.getInstance(conf);
-        job.setJarByClass(LinkGraphJob.class);
-        job.setJobName(LinkGraphJob.class.getCanonicalName());
+        job.setJarByClass(SortingJob.class);
+        job.setJobName(SortingJob.class.getCanonicalName());
 
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
@@ -150,9 +162,9 @@ public class SortingJob extends Configured implements Tool {
     public static void main(String[] args) throws Exception {
 
         //TODO: TEST
-        deleteDirectory(new File(args[1]));
+        deleteDirectory(new File(args[2]));
 
-        int exitCode = ToolRunner.run(new HITSJob(), args);
+        int exitCode = ToolRunner.run(new SortingJob(), args);
         System.exit(exitCode);
     }
 }
