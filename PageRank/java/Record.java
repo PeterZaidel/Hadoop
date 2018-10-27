@@ -24,10 +24,6 @@ public class Record implements Writable
         this.head = head;
     }
 
-    public Record(String header_url){
-        this.head = new LinkNode(header_url);
-    }
-
     public Record(String head_link, List<String> out_links)
     {
         head = new LinkNode(head_link);

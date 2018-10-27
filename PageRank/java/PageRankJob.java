@@ -18,7 +18,6 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import javax.print.DocFlavor;
-import javax.ws.rs.HEAD;
 import javax.xml.soap.Node;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -34,19 +33,19 @@ import java.util.zip.ZipException;
 
 
 
-public class HITSJob extends Configured implements Tool {
+public class PageRankJob extends Configured implements Tool {
 
     public static double alpha = 0.1;
     public static long N = 100000;
     public static int Iterations = 3;
 
-    private static String OUT_HEADER = "<OUT>";
-    private static String IN_HEADER = "<IN>";
-    private static String HEAD_HEADER = "<HEAD>";
+    private static final String HEADER_NODE = "<NODE>";
+    private static final String HEADER_REC = "<REC>";
 
 
 
-    public static class HITSMapper extends Mapper<LongWritable, Text, Text, Text> {
+
+    public static class PageRankMapper extends Mapper<LongWritable, Text, Text, Text> {
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -59,103 +58,81 @@ public class HITSJob extends Configured implements Tool {
             Record rec = new Record();
             rec.parseString(input_text);
 
-            rec.head.a = 0.0;
+            context.write(new Text(rec.head.getLink()), new Text(HEADER_REC + rec.toString()));
+
+            if(rec.out_nodes.size() == 0)
+            {
+                return;
+            }
+
+            double to_pr = rec.head.getPR()/rec.out_nodes.size();
             for(LinkNode n : rec.out_nodes)
             {
-                rec.head.a += n.h;
-            }
+                if (n.getLink().length() == 0)
+                {
+                    continue;
+                }
 
-            rec.head.h = 0.0;
-            for(LinkNode n : rec.out_nodes)
-            {
-                rec.head.h += n.a;
-            }
-
-            context.write(new Text(rec.head.getLink()), new Text(HEAD_HEADER + rec.head.toString()));
-
-            for(LinkNode n: rec.out_nodes)
-            {
-                context.write(new Text(n.getLink()), new Text(OUT_HEADER + rec.head.toString()));
-            }
-
-            for(LinkNode n: rec.in_nodes)
-            {
-                context.write(new Text(n.getLink()), new Text(IN_HEADER + rec.head.toString()));
-            }
-
-
-//            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
-
-//            if(rec.out_nodes.size() == 0)
-//            {
-//                return;
-//            }
+                LinkNode to = new LinkNode();
+                to.link = rec.head.link;
+                to.pr = to_pr;
+//                n.pr  = to_pr;
 //
-//            for(LinkNode n : rec.out_nodes)
-//            {
-//                Record node_rec = new Record(rec.head);
-////                node_rec.head = rec.head;
-//
-//                context.write(new Text(n.getLink()), new Text(node_rec.toString()));
-//            }
+//                Record node_rec = new Record();
+//                node_rec.head = rec.head;
+
+                context.write(new Text(n.getLink()), new Text(HEADER_NODE + to.toString()));
+            }
         }
     }
 
-    public static class HITSReducer extends Reducer<Text,Text, Text, Text>
+    public static class PageRankReducer extends Reducer<Text,Text, Text, Text>
     {
         @Override
-        protected void reduce(Text head_node_data, Iterable<Text> nodes_data, Context context) throws IOException, InterruptedException {
+        protected void reduce(Text node_url, Iterable<Text> nodes_text, Context context) throws IOException, InterruptedException {
+
             Record rec = new Record();
+            double rank = 0;
 
-            for(Text t : nodes_data)
-            {
-                String data = t.toString();
-                if(data.contains(IN_HEADER)) {
-                    data = data.replace(IN_HEADER, "");
-
-                }
-
-                if(data.contains(OUT_HEADER)) {
-                    data = data.replace(OUT_HEADER, "");
+            for (Text tt : nodes_text) {
+                String text_data = tt.toString();
+                if(text_data.contains(HEADER_NODE))
+                {
+                    text_data = text_data.replace(HEADER_NODE, "");
                     LinkNode n = new LinkNode();
-                    n.parseString(data);
-
-                    rec.out_nodes.add(n);
+                    n.parseString(text_data);
+                    rank += n.pr;
+                    continue;
                 }
 
-                if(data.contains(HEAD_HEADER)) {
-                    data = data.replace(HEAD_HEADER, "");
-                    rec.head.parseString(data);
+                if(text_data.contains(HEADER_REC))
+                {
+                    text_data = text_data.replace(HEADER_REC, "");
+                    rec.parseString(text_data);
                 }
             }
 
-            context.write(new Text(rec.head.getLink()), new Text(rec.toString()));
+            rank =  (alpha) / N + (1.0 - alpha) * rank;
+            rec.head.pr = rank;
+
+            context.write(new Text(node_url), new Text(rec.toString()));
         }
     }
 
     @Override
     public int run(String[] args) throws Exception
     {
-/*
-N = Integer.parseInt(System.getProperty("N"));
-alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
-Iterations = Integer.parseInt(System.getProperty("iter", "5"));
-Job job =  GetJobConf(getConf(), args[0], args[1], 1);
-//        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
-//            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
-//        }
-return job.waitForCompletion(true) ? 0 : 1;
-*/
+//        N = Integer.parseInt(System.getProperty("N", "5"));
+//        alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
+//        Iterations = Integer.parseInt(System.getProperty("iter", "2"));
 
         int iterations = Iterations;//Integer.parseInt(args[0]);
-        System.out.println("Iters: " + Integer.toString(iterations));
         String input_file = args[0];
         String output = args[1];
         Configuration conf = getConf();
 
-        String outputFormat = "%s/it%02d/";
         String inputFormat  = "%s/it%02d/part-r-*";
-
+        String outputFormat = "%s/it%02d/";
 
         String inputStep = "", outputStep = "";
         Job[] steps = new Job[iterations];
@@ -169,9 +146,6 @@ return job.waitForCompletion(true) ? 0 : 1;
         }
 
         for (int i = 1; i < iterations; i++) {
-
-            System.out.println("iter: " + Integer.toString(i));
-
             inputStep  = String.format(inputFormat,  output, i);
             outputStep = String.format(outputFormat, output, i + 1);
             steps[i] = GetJobConf(conf, inputStep, outputStep, i + 1);
@@ -193,12 +167,12 @@ return job.waitForCompletion(true) ? 0 : 1;
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
 
-        FileSystem fs = new Path("/").getFileSystem(conf);
+//        FileSystem fs = new Path("/").getFileSystem(conf);
 
         TextInputFormat.addInputPath(job, new Path(input));
 
-        job.setMapperClass(HITSMapper.class);
-        job.setReducerClass(HITSReducer.class);
+        job.setMapperClass(PageRankMapper.class);
+        job.setReducerClass(PageRankReducer.class);
 
 
         job.setMapOutputKeyClass(Text.class);
@@ -224,7 +198,7 @@ return job.waitForCompletion(true) ? 0 : 1;
 //        //TODO: TEST
 //        deleteDirectory(new File(args[1]));
 
-        int exitCode = ToolRunner.run(new HITSJob(), args);
+        int exitCode = ToolRunner.run(new PageRankJob(), args);
         System.exit(exitCode);
     }
 }

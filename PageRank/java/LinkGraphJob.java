@@ -29,22 +29,18 @@ public class LinkGraphJob extends Configured implements Tool {
     public static String END_LINKS_COUNTER = "END_LINKS_COUNTER";
 
 
-    protected static Path index_urls_path = new Path("/data/infopoisk/hits_pagerank/urls.*");
-    protected static Path raw_index_path = new Path("/user/p.zaydel/ir-hw3/uniq_links/part-*");
+    protected static Path index_urls_path = new Path("/");
 
-    public static class LinkGraphMapper extends Mapper<LongWritable, Text, Text, Text> {
+    public static class LinkGraphMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 
         private Map<String, Integer> urls_map = new HashMap<>();
         private Map<Integer, String> inv_urls_map = new HashMap<>();
 
-        public void setup(Mapper.Context context) throws IOException
+        public void setup(Context context) throws IOException
         {
-            System.out.println("LOADING URLS.TXT : " + index_urls_path.toString());
             try {
                 FileSystem fs = FileSystem.get(new Configuration());
                 FileStatus[] statuses = fs.globStatus(index_urls_path);
-
-                int urls_count = 0;
                 for (FileStatus status : statuses)
                 {
                     BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(status.getPath())) );
@@ -57,12 +53,10 @@ public class LinkGraphJob extends Configured implements Tool {
 
                         urls_map.put(url, id);
                         inv_urls_map.put(id, url);
-                        urls_count += 1;
 
                         line=br.readLine();
                     }
                 }
-                System.out.println("ALL URLS: " + urls_count);
             }
             catch (Exception e)
             { }
@@ -137,9 +131,8 @@ public class LinkGraphJob extends Configured implements Tool {
 
                 String url_text = text.substring(matchStart, matchEnd);
 
-                if(getDomainName(url_text).contains("lenta.ru"))
-                {
-                    res.add(url_text);
+                if(urls_map.containsKey(url_text)) {
+                    res.add(urls_map.get(url_text).toString());
                 }
             }
             return res;
@@ -151,16 +144,20 @@ public class LinkGraphJob extends Configured implements Tool {
              int doc_id = Integer.decode(splitted_data[0]);
              String raw_text = splitted_data[1];
 
-             if(!inv_urls_map.containsKey(doc_id))
-             {
-                 System.out.println("MAP LOST DOC_ID: " + doc_id);
-                 return;
-             }
+//             String doc_url = inv_urls_map.get(doc_id);
 
-             String doc_url = inv_urls_map.get(doc_id);
+//             if (!Base64.isBase64(raw_text))
+//             {
+//                 // if string is not base64, it is string from urls.txt
+//                 // find url and add Header to it
+//                 List<String> urls = find_urls(raw_text);
+//                 context.write(new LongWritable(doc_id), new Text(Header + urls.get(0)));
+//                 return;
+//             }
 
-             String html_text = null;
-             try {
+
+            String html_text = null;
+            try {
                 html_text = decompress(raw_text);
                 List<String> out_links = find_urls(html_text);
 
@@ -178,125 +175,144 @@ public class LinkGraphJob extends Configured implements Tool {
                         out_str.append(url).append("\t");
                 }
 
-                if(doc_url == null)
-                {
-                    System.out.println("MAP NULL EXCEPTION DOC_URL");
-                    return;
-                }
-
-
-                context.write(new Text(doc_url), new Text(out_str.toString()));
+                context.write(new LongWritable(doc_id), new Text(out_str.toString()));
 
                 for(String url: out_links)
                 {
-                    context.write(new Text(url), new Text(doc_url));
+                    context.write(new LongWritable(Integer.parseInt(url)),
+                            new Text(Integer.toString(doc_id)));
                 }
 
-
-
-             } catch (Exception e) {
-                System.out.println("MAP_EXCEPTION: " + e.getMessage());
-             }
+//                for(String url : find_urls(html_text))
+//                {
+//                    context.write(new LongWritable(doc_id), new Text(url));
+//                }
+            } catch (DataFormatException e) {
+                return;
+            }
 
 
         }
     }
 
-    public static class LinkGraphReducer extends Reducer<Text, Text, Text, Text>
+    public static class LinkGraphReducer extends Reducer<LongWritable, Text, Text, Text>
     {
         static final String Header = "<HEAD>";
         static final String OUT_HEAD = "<OUT>";
 
-//        private Map<String, Integer> urls_map = new HashMap<>();
-//        private Map<Integer, String> inv_urls_map = new HashMap<>();
-//
-//        public void setup(Reducer.Context context) throws IOException
-//        {
-//            try {
-//                FileSystem fs = FileSystem.get(new Configuration());
-//                FileStatus[] statuses = fs.globStatus(raw_index_path);
-//                for (FileStatus status : statuses)
-//                {
-//                    BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(status.getPath())) );
-//                    String line;
-//                    line=br.readLine();
-//                    while (line != null){
-//                        String[] args = line.split("\t");
-//                        int id = Integer.parseInt(args[0]);
-//                        String url = args[1];
-//
-//                        urls_map.put(url, id);
-//                        inv_urls_map.put(id, url);
-//
-//                        line=br.readLine();
-//                    }
-//                }
-//            }
-//            catch (Exception e)
-//            { }
-//            finally
-//            { }
-//
-//        }
-
         @Override
-        protected void reduce(Text url_idx, Iterable<Text> data, Context context) throws IOException, InterruptedException {
+        protected void reduce(LongWritable url_idx, Iterable<Text> data, Context context) throws IOException, InterruptedException {
 
             List<String> out_links = new ArrayList<>();
             List<String> in_links = new ArrayList<>();
-            String header_id = url_idx.toString();
+            String header_link = url_idx.toString();
+
+            for(Text t: data)
+            {
+                String str_t = t.toString();
+                if(str_t.contains(OUT_HEAD))
+                {
+                    str_t = str_t.replace(OUT_HEAD, "");
+                    if(str_t.length() > 0)
+                        out_links.addAll(Arrays.asList(str_t.split("\t")));
+                }
+                else
+                {
+                    in_links.add(str_t);
+                }
+
+            }
+
+
+
+            Record rec = new Record(header_link, out_links, in_links);
+            if(rec.out_nodes.size() == 0)
+            {
+                System.out.println("end_link_id: " + url_idx);
+                context.getCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).increment(1);
+            }
+
+//            Record rec = new Record();
+//            rec.head = new LinkNode(header_link);
+//            rec.out_nodes = new ArrayList<>();
+//            for(String s : node_links)
+//            {
+//                rec.out_nodes.add(new LinkNode(s));
+//            }
+
+            context.write(new Text(header_link), new Text(rec.toString()));
+
+
+
+//            List<String> node_links = new ArrayList<>();
 //
-//            String header_url = inv_urls_map.get(Integer.parseInt(url_idx.toString()));
-
-            try {
-
-
-                for (Text t : data) {
-                    String str_t = t.toString();
-                    if (str_t.contains(OUT_HEAD)) {
-                        str_t = str_t.replace(OUT_HEAD, "");
-                        if (str_t.length() > 0) {
-                            out_links.addAll(Arrays.asList(str_t.split("\t")));
-//                        for(String url: str_t.split("\t"))
-//                        {
-//                            context.write(new Text(header_id), new Text("<OUT>" + url));
-//                        }
-                        }
-                    } else {
-                        in_links.add(str_t);
-                        //context.write(new Text(header_id), new Text("<IN>" + str_t));
-                    }
-
-                }
-            }
-            catch (Exception e)
-            {
-                System.out.println("REDUCER_EXC_1: " + e.getMessage());
-            }
+//            String header_link = "";
+//            for(Text link: links)
+//            {
+//                String link_str = link.toString();
+//                if(link_str.contains(Header)) {
+//                    header_link = link_str.replaceAll(Header, "");
+//                }
+//                else {
+//
+//                    node_links.add(link_str);
+//                }
+//            }
+//
+//            Record rec = new Record();
+//            rec.head = new LinkNode(header_link);
+//            rec.out_nodes = new ArrayList<>();
+//            for(String s : node_links)
+//            {
+//                rec.out_nodes.add(new LinkNode(s));
+//            }
+//
+//            context.write(new Text(header_link), new Text(rec.toString()));
 
 
-            try {
-                Record rec = new Record(header_id, out_links, in_links);
-                if (rec.out_nodes.size() == 0) {
-                    context.getCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).increment(1);
-                }
+            //StringBuilder output = new StringBuilder();
 
-                context.write(new Text(header_id), new Text(rec.toString()));
-            }
-            catch (Exception e)
-            {
-                System.out.println("REDUCER_EXC_2: " + e.getMessage());
-            }
+ //           double rank = 0.0;
 
+//
+//            String header_link = "";
+//            for(Text link: links)
+//            {
+//                String link_str = link.toString();
+//                if(link_str.contains(Header)) {
+//                    header_link = link_str.replaceAll(Header, "");
+//                }
+//                else {
+//
+//                    output.append(link.toString()).append("\t");
+//                }
+//            }
+//
+//
+//            String res = "";
+////            res += url_idx.toString() + "\t";
+//            res += rank.toString() + "\t";
+////            res += header_link + "\t";
+//            res += output.toString();
+//            res += "\n";
+
+    //        context.write(new Text(header_link), new NodeWritable(header_link, rank, node_links));
         }
     }
 
     @Override
     public int run(String[] args) throws Exception {
-
-        System.out.println("GRAPH JOB START!!!!!");
         Job job = GetJobConf(getConf(), args[0], args[1]);
-        return job.waitForCompletion(true) ? 0 : 1;
+//        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
+//            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
+//        }
+        int res = job.waitForCompletion(true) ? 0 : 1;
+
+
+        System.out.println(END_LINKS_COUNTER + ": " + job.getCounters().findCounter(LINK_GRAPH_GROUP, END_LINKS_COUNTER).getValue());
+
+
+        return res;
     }
 
     private static Job GetJobConf(Configuration conf, final String input, String output) throws IOException {
@@ -308,13 +324,22 @@ public class LinkGraphJob extends Configured implements Tool {
         FileOutputFormat.setOutputPath(job, new Path(output));
         TextInputFormat.addInputPath(job, new Path(input));
 
+//        FileSystem fs = new Path("/").getFileSystem(conf);
+//
+//        RemoteIterator<LocatedFileStatus> fileListItr = fs.listFiles(new Path(input), false);
+//
+//        while (fileListItr != null && fileListItr.hasNext()) {
+//            LocatedFileStatus file = fileListItr.next();
+//            if (file.toString().contains("txt")) {
+//                TextInputFormat.addInputPath(job, file.getPath());
+//            }
+//        }
+
         job.setMapperClass(LinkGraphMapper.class);
+//        job.setCombinerClass(LinkGraphReducer.class);
         job.setReducerClass(LinkGraphReducer.class);
 
-        job.setMapOutputValueClass(Text.class);
-        job.setMapOutputKeyClass(Text.class);
-
-        job.setOutputKeyClass(Text.class);
+        job.setOutputKeyClass(LongWritable.class);
         job.setOutputValueClass(Text.class);
 
         return job;
@@ -332,13 +357,10 @@ public class LinkGraphJob extends Configured implements Tool {
 
     public static void main(String[] args) throws Exception {
 
-////        //TODO: TEST
+//        //TODO: TEST
 //        deleteDirectory(new File(args[1]));
-//
-////        System.out.println(args[2]);
-//
-//        LinkGraphJob.index_urls_path = new Path(args[3]);
-//        LinkGraphJob.raw_index_path = new Path(args[3]);
+
+        LinkGraphJob.index_urls_path = new Path(args[2]);
 
         int exitCode = ToolRunner.run(new LinkGraphJob(), args);
         System.exit(exitCode);
