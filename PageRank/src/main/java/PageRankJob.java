@@ -37,13 +37,20 @@ public class PageRankJob extends Configured implements Tool {
 
     public static double alpha = 0.1;
     public static long N = 4086514;
-    public static int Iterations = 3;
+    public static long END_NODES = 3538126;
+    public static int Iterations = 1;
+    public static int Reducers = 5;
+
+    public static int CUR_ITER = 0;
 
     private static final String HEADER_NODE = "<<NODE>>";
+    private static final String HEADER_NODE_OUT = "<NODE_OUT>";
     private static final String HEADER_REC = "<<REC>>";
 
     public static final String PR_GROUP = "PageRank_GROUP";
     public static final String PR_END_SUM = "PR_END_SUM";
+
+    protected static String EnSumFile = "";
 
 
     public static class CountEndNodesPRMapper extends Mapper<LongWritable, Text, Text, Text>{
@@ -96,6 +103,39 @@ public class PageRankJob extends Configured implements Tool {
 
     public static class PageRankMapper extends Mapper<LongWritable, Text, Text, Text> {
 
+        double enSumPR = 0.0;
+
+        public void setup(Mapper.Context context) throws IOException
+        {
+            System.out.println("CURRENT_ITER: " + Integer.toString(CUR_ITER));
+
+            try {
+                FileSystem fs = FileSystem.get(new Configuration());
+                Path p = new Path(EnSumFile + "/part-*");
+                FileStatus[] statuses = fs.globStatus(p);
+                for (FileStatus status : statuses)
+                {
+                    BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(status.getPath())) );
+                    String line;
+                    line=br.readLine();
+                    while (line != null){
+                        line = line.replace("\t", "");
+                        double val = Double.parseDouble(line);
+                        enSumPR += val;
+                        line=br.readLine();
+                    }
+                }
+            }
+            catch (Exception e)
+            { }
+            finally
+            { }
+
+
+            System.out.println("enSumPR = "+Double.toString(enSumPR));
+
+        }
+
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String input_text = value.toString();
@@ -106,41 +146,88 @@ public class PageRankJob extends Configured implements Tool {
 
             Record rec = new Record();
             rec.parseString(input_text);
+//
+            if(CUR_ITER == 0)
+            {
+                context.getCounter(PR_GROUP, "DEFAULT_PR").increment(1);
+                rec.head.pr = 1.0/N;
+            }
 
             context.write(new Text(header_url), new Text(HEADER_REC + rec.toString()));
 
 
             if(rec.out_nodes.size() == 0)
             {
-//                double end_nodes_pr_sum = Double.longBitsToDouble(context.getCounter(PR_GROUP, PR_END_SUM).getValue());
-//                end_nodes_pr_sum += rec.head.pr;
-//                context.getCounter(PR_GROUP, PR_END_SUM).setValue(Double.doubleToLongBits(end_nodes_pr_sum));
+                context.getCounter(PR_GROUP, PR_END_SUM).increment(1);
+            }
+
+            long out_size = 0;
+            for(LinkNode n: rec.out_nodes)
+            {
+                if(n.link.length() > 0)
+                {
+                    out_size++;
+                }
+            }
+
+            if(out_size == 0)
+            {
                 return;
             }
 
-            double to_pr = rec.head.getPR()/rec.out_nodes.size();
-            for(LinkNode n : rec.out_nodes)
+
+            double to_pr = rec.head.pr/out_size + enSumPR/N;
+            for(LinkNode n_to : rec.out_nodes)
             {
-                if (n.getLink().length() == 0)
+                if(n_to.link.length() == 0)
                 {
                     continue;
                 }
 
-                LinkNode to = new LinkNode();
-                to.link = rec.head.link;
-                to.pr = to_pr;
-//                n.pr  = to_pr;
-//
-//                Record node_rec = new Record();
-//                node_rec.head = rec.head;
+                LinkNode from = new LinkNode();
+                from.link = rec.head.link;
+                from.pr = to_pr;
 
-                context.write(new Text(n.getLink()), new Text(HEADER_NODE + to.toString()));
+                context.write(new Text(n_to.getLink()), new Text(HEADER_NODE + from.toString()));
             }
         }
     }
 
     public static class PageRankReducer extends Reducer<Text,Text, Text, Text>
     {
+
+//        double enSumPR = 0.0;
+//
+//        public void setup(Reducer.Context context) throws IOException
+//        {
+//
+//            try {
+//                FileSystem fs = FileSystem.get(new Configuration());
+//                Path p = new Path(EnSumFile + "/part-*");
+//                FileStatus[] statuses = fs.globStatus(p);
+//                for (FileStatus status : statuses)
+//                {
+//                    BufferedReader br=new BufferedReader(new InputStreamReader(fs.open(status.getPath())) );
+//                    String line;
+//                    line=br.readLine();
+//                    while (line != null){
+//                        line = line.replace("\t", "");
+//                        double val = Double.parseDouble(line);
+//                        enSumPR += val;
+//                        line=br.readLine();
+//                    }
+//                }
+//            }
+//            catch (Exception e)
+//            { }
+//            finally
+//            { }
+//
+//
+//            System.out.println("enSumPR = "+Double.toString(enSumPR));
+//
+//        }
+
         @Override
         protected void reduce(Text node_url, Iterable<Text> nodes_text, Context context) throws IOException, InterruptedException {
 
@@ -150,7 +237,9 @@ public class PageRankJob extends Configured implements Tool {
             boolean loaded_rec = false;
 
             List<LinkNode> in_nodes = new LinkedList<>();
-            for (Text tt : nodes_text) {
+            List<LinkNode> out_nodes = new LinkedList<>();
+            for (Text tt : nodes_text)
+            {
                 String text_data = tt.toString();
                 if(text_data.contains(HEADER_NODE))
                 {
@@ -158,10 +247,9 @@ public class PageRankJob extends Configured implements Tool {
                     LinkNode n = new LinkNode();
                     n.parseString(text_data);
 
-                    in_nodes.add(n);
+//                    in_nodes.add(n);
 
                     rank += n.pr;
-                    continue;
                 }
 
                 if(text_data.contains(HEADER_REC))
@@ -172,16 +260,19 @@ public class PageRankJob extends Configured implements Tool {
                 }
             }
 
-            if(!loaded_rec)
-            {
-                rec.in_nodes = in_nodes;
-            }
+//            rec.in_nodes = in_nodes;
 
-            //double end_nodes_pr_sum = Double.longBitsToDouble(context.getCounter(PR_GROUP, PR_END_SUM).getValue());
+//            if(rec.out_nodes.size() == 0) {
+//                rank =  (alpha) / N + (1.0 - alpha) * rank;
+//                rec.head.pr = rank;
+//            }
+//            else {
+//                rank = enSumPR / (N-END_NODES) + (alpha) / N + (1.0 - alpha) * rank;
+//                rec.head.pr = rank;
+//            }
 
-            //rank = end_nodes_pr_sum/N + (alpha) / N + (1.0 - alpha) * rank;
-            rank =  (alpha) / N + (1.0 - alpha) * rank;
-            rec.head.pr = rank;
+            rec.head.pr =  (alpha) / N + (1.0 - alpha) * rank;
+
 
             context.write(new Text(node_url), new Text(rec.toString()));
         }
@@ -194,17 +285,18 @@ public class PageRankJob extends Configured implements Tool {
 //        alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
 //        Iterations = Integer.parseInt(System.getProperty("iter", "2"));
         System.out.println("PAGE RANK JOB!!!");
+        System.out.println("Iterations: " + Integer.toString(Iterations));
 
 
         int iterations = Iterations;//Integer.parseInt(args[0]);
         String input_file = args[0];
         String output = args[1];
         Configuration conf = getConf();
+        FileSystem fs = FileSystem.get(new Configuration());
 
         String inputFormat  = "%s/it%02d/part-r-*";
         String outputFormat = "%s/it%02d/";
-        String en_sumOutputFormat = "%s/it%02d_en_sum/";
-        String en_sumNodesInputFormat = "%s/it%02d_en_sum/part-r-*";
+        String en_sumOutputFormat = "%s/en_sum/";
 
         String inputStep = "", outputStep = "";
         String ensumInputStep = "",ensumOutputStep = "";
@@ -212,6 +304,10 @@ public class PageRankJob extends Configured implements Tool {
         Job[] steps = new Job[iterations];
 
         ensumOutputStep = String.format(en_sumOutputFormat, output, 1);
+        fs.delete(new Path(ensumOutputStep), true);
+        PageRankJob.EnSumFile = ensumOutputStep;
+
+
         Job enSumJob = GetCountEndNodesConf(conf, input_file, ensumOutputStep );
         if(!enSumJob.waitForCompletion(true))
         {
@@ -219,7 +315,9 @@ public class PageRankJob extends Configured implements Tool {
             return 1;
         }
 
+        System.out.println("PageRank iter: 0");
         outputStep = String.format(outputFormat, output, 1);
+        CUR_ITER = 0;
         steps[0] = GetJobConf(conf, input_file, outputStep, 1);
         if(!steps[0].waitForCompletion(true))
         {
@@ -227,14 +325,19 @@ public class PageRankJob extends Configured implements Tool {
             return 1;
         }
 
+        System.out.println("SET_DEF_PR: " + steps[0].getCounters().findCounter(PR_GROUP, "DEFAULT_PR").getValue());
+
 
 
         for (int i = 1; i < iterations; i++) {
+
+            System.out.println("PageRank iter: " + Integer.toString(i));
             inputStep  = String.format(inputFormat,  output, i);
             outputStep = String.format(outputFormat, output, i + 1);
 
             ensumInputStep = String.format(inputFormat,  output, i);
-            ensumOutputStep = String.format(en_sumOutputFormat, output, i+1);
+            ensumOutputStep = String.format(en_sumOutputFormat, output);
+            fs.delete(new Path(ensumOutputStep), true);
 
             enSumJob = GetCountEndNodesConf(conf, ensumInputStep, ensumOutputStep );
             if(!enSumJob.waitForCompletion(true))
@@ -243,13 +346,17 @@ public class PageRankJob extends Configured implements Tool {
                 return 1;
             }
 
+            CUR_ITER = i;
             steps[i] = GetJobConf(conf, inputStep, outputStep, i + 1);
             if(!steps[i].waitForCompletion(true))
             {
                 System.out.println("Error in PRJob! iter: " + Integer.toString(i));
                 return 1;
             }
+            System.out.println("SET_DEF_PR: " + steps[i].getCounters().findCounter(PR_GROUP, "DEFAULT_PR").getValue());
         }
+
+
         return 0;
     }
 
@@ -279,6 +386,8 @@ public class PageRankJob extends Configured implements Tool {
         job.setOutputKeyClass(LongWritable.class);
         job.setOutputValueClass(Text.class);
 
+        job.setNumReduceTasks(Reducers);
+
         return job;
     }
 
@@ -287,7 +396,7 @@ public class PageRankJob extends Configured implements Tool {
         Job job = Job.getInstance(conf);
 
         job.setJarByClass(PageRankJob.class);
-        job.setJobName(PageRankJob.class.getCanonicalName());
+        job.setJobName("END Nodes Count");
 
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
@@ -303,6 +412,7 @@ public class PageRankJob extends Configured implements Tool {
 
         job.setOutputKeyClass(LongWritable.class);
         job.setOutputValueClass(Text.class);
+        job.setNumReduceTasks(1);
 
         return job;
     }
@@ -317,6 +427,8 @@ public class PageRankJob extends Configured implements Tool {
     }
 
     public static void main(String[] args) throws Exception {
+
+        System.out.println("PageRank Started! ");
 
 //        //TODO: TEST
         deleteDirectory(new File(args[1]));

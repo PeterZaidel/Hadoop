@@ -255,16 +255,12 @@ public class LinkGraphJob extends Configured implements Tool {
                     String str_t = t.toString();
                     if (str_t.contains(OUT_HEAD)) {
                         str_t = str_t.replace(OUT_HEAD, "");
-                        if (str_t.length() > 0) {
+                        if (str_t.length() > 0)
+                        {
                             out_links.addAll(Arrays.asList(str_t.split("\t")));
-//                        for(String url: str_t.split("\t"))
-//                        {
-//                            context.write(new Text(header_id), new Text("<OUT>" + url));
-//                        }
                         }
                     } else {
                         in_links.add(str_t);
-                        //context.write(new Text(header_id), new Text("<IN>" + str_t));
                     }
 
                 }
@@ -316,6 +312,7 @@ public class LinkGraphJob extends Configured implements Tool {
 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(Text.class);
+        job.setNumReduceTasks(1);
 
         return job;
     }
@@ -333,12 +330,12 @@ public class LinkGraphJob extends Configured implements Tool {
     public static void main(String[] args) throws Exception {
 
 ////        //TODO: TEST
-//        deleteDirectory(new File(args[1]));
+        deleteDirectory(new File(args[1]));
 //
 ////        System.out.println(args[2]);
 //
-//        LinkGraphJob.index_urls_path = new Path(args[3]);
-//        LinkGraphJob.raw_index_path = new Path(args[3]);
+        LinkGraphJob.index_urls_path = new Path(args[3]);
+        LinkGraphJob.raw_index_path = new Path(args[3]);
 
         int exitCode = ToolRunner.run(new LinkGraphJob(), args);
         System.exit(exitCode);

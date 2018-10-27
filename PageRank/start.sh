@@ -7,15 +7,12 @@
 #hadoop jar build/libs/hw3.jar LinkGraphJob   /data/infopoisk/hits_pagerank/docs-*.txt    /user/p.zaydel/ir-hw3/graph
 
 hdfs dfs -rm -r /user/p.zaydel/ir-hw3/page-rank/
-hadoop jar build/libs/hw3.jar PageRankJob   /user/p.zaydel/ir-hw3/graph/part-*    /user/p.zaydel/ir-hw3/page-rank
-
+hadoop jar hw3.jar PageRankJob   /user/p.zaydel/ir-hw3/graph/part-*    /user/p.zaydel/ir-hw3/page-rank
+#
 #hdfs dfs -rm -r /user/p.zaydel/ir-hw3/hits/
 #hadoop jar build/libs/hw3.jar HITSJob   /user/p.zaydel/ir-hw3/graph/part-*    /user/p.zaydel/ir-hw3/hits
 
-#hdfs dfs -rm -r /user/p.zaydel/ir-hw3/sorted/
-#hadoop jar build/libs/hw3.jar  SortingJob  /user/p.zaydel/ir-hw3/page-rank/part-*  /user/p.zaydel/ir-hw3/hits/part-*  /user/p.zaydel/ir-hw3/sorted
-
-
-
+hdfs dfs -rm -r /user/p.zaydel/ir-hw3/sorted/
+hadoop jar hw3.jar  SortingJob  /user/p.zaydel/ir-hw3/page-rank/it01/part-*  /user/p.zaydel/ir-hw3/hits/it01/part-*  /user/p.zaydel/ir-hw3/sorted/
 
 

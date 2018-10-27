@@ -36,9 +36,9 @@ import java.util.zip.ZipException;
 
 public class HITSJob extends Configured implements Tool {
 
-    public static double alpha = 0.1;
-    public static long N = 100000;
-    public static int Iterations = 3;
+    public static long N = 4086514;
+    public static int Iterations = 5;
+    public static int Reducers = 5;
 
     private static String OUT_HEADER = "<OUT>";
     private static String IN_HEADER = "<IN>";
@@ -60,7 +60,7 @@ public class HITSJob extends Configured implements Tool {
             rec.parseString(input_text);
 
             rec.head.a = 0.0;
-            for(LinkNode n : rec.out_nodes)
+            for(LinkNode n : rec.in_nodes)
             {
                 rec.head.a += n.h;
             }
@@ -75,12 +75,12 @@ public class HITSJob extends Configured implements Tool {
 
             for(LinkNode n: rec.out_nodes)
             {
-                context.write(new Text(n.getLink()), new Text(OUT_HEADER + rec.head.toString()));
+                context.write(new Text(n.getLink()), new Text(IN_HEADER + rec.head.toString()));
             }
 
             for(LinkNode n: rec.in_nodes)
             {
-                context.write(new Text(n.getLink()), new Text(IN_HEADER + rec.head.toString()));
+                context.write(new Text(n.getLink()), new Text(OUT_HEADER + rec.head.toString()));
             }
 
 
@@ -112,7 +112,9 @@ public class HITSJob extends Configured implements Tool {
                 String data = t.toString();
                 if(data.contains(IN_HEADER)) {
                     data = data.replace(IN_HEADER, "");
-
+                    LinkNode n = new LinkNode();
+                    n.parseString(data);
+                    rec.in_nodes.add(n);
                 }
 
                 if(data.contains(OUT_HEADER)) {
@@ -136,17 +138,6 @@ public class HITSJob extends Configured implements Tool {
     @Override
     public int run(String[] args) throws Exception
     {
-/*
-N = Integer.parseInt(System.getProperty("N"));
-alpha = Double.parseDouble(System.getProperty("alpha", "0.1"));
-Iterations = Integer.parseInt(System.getProperty("iter", "5"));
-Job job =  GetJobConf(getConf(), args[0], args[1], 1);
-//        if (System.getProperty("mapreduce.input.indexedgz.bytespermap") != null) {
-//            throw new Exception("Property = " + System.getProperty("mapreduce.input.indexedgz.bytespermap"));
-//        }
-return job.waitForCompletion(true) ? 0 : 1;
-*/
-
         int iterations = Iterations;//Integer.parseInt(args[0]);
         System.out.println("Iters: " + Integer.toString(iterations));
         String input_file = args[0];
@@ -160,6 +151,7 @@ return job.waitForCompletion(true) ? 0 : 1;
         String inputStep = "", outputStep = "";
         Job[] steps = new Job[iterations];
 
+        System.out.println("HITS iter: 0");
         outputStep = String.format(outputFormat, output, 1);
         steps[0] = GetJobConf(conf, input_file, outputStep, 1);
         boolean job_res = steps[0].waitForCompletion(true);
@@ -170,7 +162,7 @@ return job.waitForCompletion(true) ? 0 : 1;
 
         for (int i = 1; i < iterations; i++) {
 
-            System.out.println("iter: " + Integer.toString(i));
+            System.out.println("HITS iter: " + Integer.toString(i));
 
             inputStep  = String.format(inputFormat,  output, i);
             outputStep = String.format(outputFormat, output, i + 1);
@@ -187,13 +179,11 @@ return job.waitForCompletion(true) ? 0 : 1;
 
     private static Job GetJobConf(Configuration conf, String input, String output, int currentIteration) throws IOException {
         Job job = Job.getInstance(conf);
-        job.setJarByClass(PageRankJob.class);
-        job.setJobName(PageRankJob.class.getCanonicalName());
+        job.setJarByClass(HITSJob.class);
+        job.setJobName(HITSJob.class.getCanonicalName());
 
         job.setInputFormatClass(TextInputFormat.class);
         FileOutputFormat.setOutputPath(job, new Path(output));
-
-        FileSystem fs = new Path("/").getFileSystem(conf);
 
         TextInputFormat.addInputPath(job, new Path(input));
 
@@ -206,6 +196,7 @@ return job.waitForCompletion(true) ? 0 : 1;
 
         job.setOutputKeyClass(LongWritable.class);
         job.setOutputValueClass(Text.class);
+        job.setNumReduceTasks(Reducers);
 
         return job;
     }
@@ -220,9 +211,10 @@ return job.waitForCompletion(true) ? 0 : 1;
     }
 
     public static void main(String[] args) throws Exception {
+        System.out.println("HITS Started!");
 
 //        //TODO: TEST
-//        deleteDirectory(new File(args[1]));
+        deleteDirectory(new File(args[1]));
 
         int exitCode = ToolRunner.run(new HITSJob(), args);
         System.exit(exitCode);

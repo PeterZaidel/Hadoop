@@ -90,6 +90,11 @@ public class SortingJob extends Configured implements Tool {
                     break;
             }
 
+            if(rec.out_nodes.size() == 0)
+            {
+                val = 0;
+            }
+
             context.write(new DoubleWritable(val), new Text(head_node.toString()));
         }
     }
@@ -118,13 +123,13 @@ public class SortingJob extends Configured implements Tool {
         Job job = GetJobConf(getConf(), args[0], res_path + "pr/");
         int res = job.waitForCompletion(true) ? 0 : 1;
 
-        SORT_VAL = SortingVal.HITS_A;
-        job = GetJobConf(getConf(), args[1], res_path + "hits_a/");
-        res = job.waitForCompletion(true) ? 0 : 1;
-
-        SORT_VAL = SortingVal.HITS_H;
-        job = GetJobConf(getConf(), args[1], res_path + "hits_h/");
-        res = job.waitForCompletion(true) ? 0 : 1;
+//        SORT_VAL = SortingVal.HITS_A;
+//        job = GetJobConf(getConf(), args[1], res_path + "hits_a/");
+//        res = job.waitForCompletion(true) ? 0 : 1;
+//
+//        SORT_VAL = SortingVal.HITS_H;
+//        job = GetJobConf(getConf(), args[1], res_path + "hits_h/");
+//        res = job.waitForCompletion(true) ? 0 : 1;
 
         return res;
     }
@@ -161,8 +166,10 @@ public class SortingJob extends Configured implements Tool {
 
     public static void main(String[] args) throws Exception {
 
+        System.out.println("Started sorting!");
+
 //        //TODO: TEST
-//        deleteDirectory(new File(args[2]));
+        deleteDirectory(new File(args[2]));
 
         int exitCode = ToolRunner.run(new SortingJob(), args);
         System.exit(exitCode);

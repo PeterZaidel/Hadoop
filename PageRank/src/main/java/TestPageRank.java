@@ -7,29 +7,37 @@ import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 
 public class TestPageRank
 {
-    public static void createTestLinkGraphFile(String foldername) throws FileNotFoundException, UnsupportedEncodingException {
+    public static int createTestLinkGraphFile(String foldername) throws FileNotFoundException, UnsupportedEncodingException {
         PrintWriter writer = new PrintWriter(foldername + "part-r-00000", "UTF-8");
 
-        Record nodeA = new Record("A",  Arrays.asList("B", "D"), Arrays.asList("C", "D", "E"));
-        Record nodeB = new Record("B", Arrays.asList("E"), Arrays.asList("A"));
-        Record nodeC = new Record("C",  Arrays.asList("A"), new ArrayList<String>());
-        Record nodeD = new Record("D",  Arrays.asList("A"), Arrays.asList("A"));
-        Record nodeE = new Record("E",  Arrays.asList("A"), Arrays.asList("B"));
+//        Record nodeA = new Record("A",  Arrays.asList("B", "D", "F"), Arrays.asList("C", "D", "E"));
+//        Record nodeB = new Record("B", Arrays.asList("E", "F"), Arrays.asList("A", "C"));
+//        Record nodeC = new Record("C",  Arrays.asList("A", "F"), new LinkedList<String>());
+//        Record nodeD = new Record("D",  Arrays.asList("A"), Arrays.asList("A"));
+//        Record nodeE = new Record("E",  Arrays.asList("A"), Arrays.asList("B"));
+//        Record nodeF = new Record("F",  new LinkedList<String>(), Arrays.asList("B", "A", "C"));
+
+        Record nodeA = new Record("A",  Arrays.asList("B"), Arrays.asList("B"));
+        Record nodeB = new Record("B",  Arrays.asList("A", "C"), Arrays.asList("A"));
+        Record nodeC = new Record("C",  Arrays.asList(), Arrays.asList("B"));
 
 
-        List<Record> nodes = Arrays.asList(nodeA, nodeB, nodeC,
-                nodeD, nodeE);
+        List<Record> nodes = Arrays.asList(nodeA, nodeB, nodeC);
 
         for(Record n: nodes)
         {
+            //n.head.pr = 1.0 / nodes.size();
             writer.println(n.head.link + "\t" + n.toString());
         }
 
         writer.close();
+
+        return nodes.size();
     }
 
     static void TestNodeWriter()
@@ -64,22 +72,39 @@ public class TestPageRank
         return directoryToBeDeleted.delete();
     }
 
+    public static void TestPR(String[] args) throws Exception {
+        deleteDirectory(new File(args[1]));
+
+        PageRankJob.Iterations = 3;
+        PageRankJob.alpha = 0.1;
+
+        PageRankJob.N = createTestLinkGraphFile(args[0]);
+        PageRankJob.Reducers = 1;
+
+
+        args[0] = args[0]+"part-r-*";
+        int exitCode = ToolRunner.run(new PageRankJob(), args);
+    }
+
+    public static void TestHITS(String[] args) throws Exception {
+        deleteDirectory(new File(args[1]));
+
+        HITSJob.Iterations = 3;
+        //HITSJob.alpha = 0.1;
+
+        HITSJob.N = createTestLinkGraphFile(args[0]);
+        HITSJob.Reducers = 1;
+
+
+        args[0] = args[0]+"part-r-*";
+        int exitCode = ToolRunner.run(new HITSJob(), args);
+    }
+
     public static void main(String[] args) throws Exception {
 
 //        TestNodeWriter();
-
-        deleteDirectory(new File(args[1]));
-
-
-
-        createTestLinkGraphFile(args[0]);
-
-        PageRankJob.N = 5;
-        PageRankJob.Iterations = 2;
-        PageRankJob.alpha = 0.1;
-        args[0] = args[0]+"part-r-*";
-        int exitCode = ToolRunner.run(new PageRankJob(), args);
-        System.exit(exitCode);
+        TestPR(args);
+        //TestHITS(args);
 
     }
 }

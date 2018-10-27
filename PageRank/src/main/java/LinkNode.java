@@ -12,7 +12,7 @@ public class LinkNode implements Writable {
     public static String DELIMETER = "<::>";
 
     public String link = "";
-    public double pr = 0.0;
+    public double pr = 0.0;//1.0/ PageRankJob.N;
     public double a = 1.0;
     public double h = 1.0;
 
