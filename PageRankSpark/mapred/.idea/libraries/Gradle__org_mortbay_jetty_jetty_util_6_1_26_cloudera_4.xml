@@ -1,0 +1,11 @@
+<component name="libraryTable">
+  <library name="Gradle: org.mortbay.jetty:jetty-util:6.1.26.cloudera.4">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.mortbay.jetty/jetty-util/6.1.26.cloudera.4/b8507b7c5d3fd9a3d01775272cbf1a63f530c19d/jetty-util-6.1.26.cloudera.4.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES>
+      <root url="jar://$USER_HOME$/.gradle/caches/modules-2/files-2.1/org.mortbay.jetty/jetty-util/6.1.26.cloudera.4/cbb3d59ae8a6393d801918341a7db1c89e4dbedb/jetty-util-6.1.26.cloudera.4-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

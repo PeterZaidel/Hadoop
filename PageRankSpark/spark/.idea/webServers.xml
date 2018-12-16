@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="7f044bcd-0dc4-499f-bb95-9582a13e5548" name="p.zaydel@sphere-hdp1" url="http://sphere-hdp1.g">
+        <fileTransfer host="sphere-hdp1.g" port="22" rootFolder="/home/p.zaydel" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" shareSSLContext="true" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
